@@ -4,7 +4,7 @@ import os
 from datetime import datetime, date
 import streamlit as st
 
-st.set_page_config(page_title="Calendário Financeiro 2026", layout="centered")
+st.set_page_config(page_title="Calendário Financeiro 2026", layout="wide")
 
 # --- GERENCIAMENTO DE ANOTAÇÕES E FINANÇAS (JSON LOCAL) ---
 ARQUIVO_ANOTACOES = "anotacoes_2026.json"
@@ -152,7 +152,7 @@ mes_escolhido = st.sidebar.selectbox(
     format_func=lambda x: f"{meses_nomes[x]} 2026"
 )
 
-st.sidebar.caption("💡 Clique em qualquer dia para lançar receitas, despesas ou lembretes.")
+st.sidebar.caption("💡 Clique em qualquer dia para lançar receitas, despesas ou eventos.")
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("🎨 Personalizar Cores", expanded=False):
@@ -163,7 +163,7 @@ with st.sidebar.expander("🎨 Personalizar Cores", expanded=False):
     cor_texto_dias = st.color_picker("Números dos dias", "#1E293B")
     cor_destaque_hoje = st.color_picker("Destaque do dia atual", "#F59E0B")
     cor_feriado = st.color_picker("Marcação de feriados", "#0EA5E9")
-    cor_nota = st.color_picker("Marcação de lembretes", "#8B5CF6")
+    cor_nota = st.color_picker("Marcação de eventos", "#8B5CF6")
     cor_receita = st.color_picker("Etiqueta de Receita (+)", "#10B981")
     cor_despesa = st.color_picker("Etiqueta de Despesa (-)", "#EF4444")
 
@@ -177,24 +177,6 @@ if "dia_clicado" in st.query_params:
             abrir_modal_anotacao(mes_sel, dia_sel)
     except ValueError:
         st.query_params.clear()
-
-# --- RELÓGIO EM TEMPO REAL ---
-@st.fragment(run_every=1)
-def mostrar_relogio():
-    tempo_atual = datetime.now()
-    data_str = tempo_atual.strftime("%d/%m/%Y")
-    hora_str = tempo_atual.strftime("%H:%M:%S")
-    html_relogio = (
-        f'<div style="background-color: {cor_fundo_relogio}; color: {cor_texto_relogio}; '
-        f'padding: 12px 20px; border-radius: 12px; display: flex; justify-content: space-between; '
-        f'align-items: center; margin-bottom: 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); font-family: sans-serif;">'
-        f'<span style="font-size: 16px; opacity: 0.9;">📅 {data_str}</span>'
-        f'<span style="font-size: 24px; font-weight: bold; font-family: monospace;">⏰ {hora_str}</span>'
-        f'</div>'
-    )
-    st.markdown(html_relogio, unsafe_allow_html=True)
-
-mostrar_relogio()
 
 # --- CSS HOVER ---
 st.markdown(
@@ -213,7 +195,7 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# --- CONSTRUÇÃO DO CALENDÁRIO ---
+# --- PROCESSAMENTO DOS DADOS DO MÊS ---
 cal = calendar.Calendar(firstweekday=6)
 semanas = cal.monthdayscalendar(2026, mes_escolhido)
 dias_semana = ["DOM", "SEG", "TER", "QUA", "QUI", "SEX", "SÁB"]
@@ -222,7 +204,9 @@ cabecalho_dias_html = "".join(f"<div>{dia}</div>" for dia in dias_semana)
 
 celulas_html = ""
 feriados_do_mes = []
-notas_do_mes = []
+eventos_do_mes = []
+receitas_do_mes = []
+despesas_do_mes = []
 
 total_receitas = 0.0
 total_despesas = 0.0
@@ -233,7 +217,7 @@ for semana in semanas:
     for idx, dia in enumerate(semana):
         if dia == 0:
             celulas_html += (
-                f'<div style="height: 92px; background-color: {cor_fundo_dias}; '
+                f'<div style="height: 88px; background-color: {cor_fundo_dias}; '
                 f'opacity: 0.4; border: 1px solid rgba(0,0,0,0.05);"></div>'
             )
         else:
@@ -246,22 +230,24 @@ for semana in semanas:
 
             cor_etiqueta = cor_nota
             if nota_dia:
-                notas_do_mes.append((dia, nota_dia))
                 tipo_reg = nota_dia.get("tipo", "Lembrete")
                 valor_reg = float(nota_dia.get("valor", 0.0))
 
                 if tipo_reg == "Receita":
                     cor_etiqueta = cor_receita
                     total_receitas += valor_reg
+                    receitas_do_mes.append((dia, nota_dia))
                 elif tipo_reg == "Despesa":
                     cor_etiqueta = cor_despesa
                     total_despesas += valor_reg
+                    despesas_do_mes.append((dia, nota_dia))
 
-                    # Verifica se vence hoje ou nos próximos 3 dias
                     data_venc = date(2026, mes_escolhido, dia)
                     dias_restantes = (data_venc - hoje_date).days
                     if 0 <= dias_restantes <= 3:
                         alertas_vencimento.append((dia, nota_dia["titulo"], valor_reg, dias_restantes))
+                else:
+                    eventos_do_mes.append((dia, nota_dia))
 
             if nome_feriado:
                 cor_numero = cor_feriado
@@ -273,7 +259,7 @@ for semana in semanas:
             if eh_hoje:
                 estilo_dia = (
                     f"background-color: {cor_destaque_hoje}; color: #FFFFFF; border-radius: 50%; "
-                    f"width: 30px; height: 30px; display: flex; align-items: center; "
+                    f"width: 28px; height: 28px; display: flex; align-items: center; "
                     f"justify-content: center; font-weight: bold;"
                 )
             else:
@@ -281,12 +267,12 @@ for semana in semanas:
 
             bolinhas = ""
             if nome_feriado:
-                bolinhas += f'<span style="width: 7px; height: 7px; background-color: {cor_feriado}; border-radius: 50%;"></span>'
+                bolinhas += f'<span style="width: 6px; height: 6px; background-color: {cor_feriado}; border-radius: 50%;"></span>'
             if nota_dia:
-                bolinhas += f'<span style="width: 7px; height: 7px; background-color: {cor_etiqueta}; border-radius: 50%;"></span>'
+                bolinhas += f'<span style="width: 6px; height: 6px; background-color: {cor_etiqueta}; border-radius: 50%;"></span>'
 
             indicadores_html = (
-                f'<div style="display: flex; gap: 4px; height: 8px; margin-top: 3px; align-items: center;">'
+                f'<div style="display: flex; gap: 4px; height: 7px; margin-top: 3px; align-items: center;">'
                 f'{bolinhas}</div>'
             )
 
@@ -298,11 +284,11 @@ for semana in semanas:
                     sinal = "+" if tipo_reg == "Receita" else "-"
                     texto_badge = f"{sinal} R${valor_reg:,.0f}".replace(",", ".")
                 else:
-                    texto_badge = nota_dia["titulo"][:11] + "…" if len(nota_dia["titulo"]) > 11 else nota_dia["titulo"]
+                    texto_badge = nota_dia["titulo"][:10] + "…" if len(nota_dia["titulo"]) > 10 else nota_dia["titulo"]
 
                 previa_nota = (
                     f'<div style="font-size: 10px; font-weight: 700; background-color: {cor_etiqueta}; color: #FFFFFF; '
-                    f'padding: 1px 6px; border-radius: 4px; margin-top: 3px; max-width: 92%; '
+                    f'padding: 1px 5px; border-radius: 4px; margin-top: 3px; max-width: 92%; '
                     f'white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{texto_badge}</div>'
                 )
 
@@ -318,9 +304,9 @@ for semana in semanas:
 
             celulas_html += (
                 f'<a class="celula-dia" href="?mes={mes_escolhido}&dia_clicado={dia}" target="_self" {tooltip} '
-                f'style="height: 92px; background-color: {cor_fundo_dias}; '
-                f'border: {borda_celula}; padding: 4px; display: flex; '
-                f'flex-direction: column; align-items: center; justify-content: center; font-size: 16px; '
+                f'style="height: 88px; background-color: {cor_fundo_dias}; '
+                f'border: {borda_celula}; padding: 3px; display: flex; '
+                f'flex-direction: column; align-items: center; justify-content: center; font-size: 15px; '
                 f'cursor: pointer;">'
                 f'<span style="{estilo_dia}">{dia}</span>'
                 f'{indicadores_html}'
@@ -328,105 +314,89 @@ for semana in semanas:
                 f'</a>'
             )
 
-html_calendario = (
-    f'<div style="border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.12); '
-    f'font-family: sans-serif; border: 1px solid rgba(0,0,0,0.08);">'
-    f'<div style="background-color: {cor_cabecalho}; color: #FFFFFF; padding: 20px; text-align: center;">'
-    f'<h2 style="margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;">{meses_nomes[mes_escolhido]} 2026</h2>'
-    f'</div>'
-    f'<div style="display: grid; grid-template-columns: repeat(7, 1fr); background-color: {cor_cabecalho}; '
-    f'filter: brightness(0.9); color: #FFFFFF; text-align: center; font-weight: bold; font-size: 13px; padding: 10px 0;">'
-    f'{cabecalho_dias_html}'
-    f'</div>'
-    f'<div style="display: grid; grid-template-columns: repeat(7, 1fr); background-color: {cor_fundo_dias}; gap: 1px;">'
-    f'{celulas_html}'
-    f'</div>'
-    f'</div>'
-)
+# --- LAYOUT EM 3 COLUNAS: ESQUERDA (FERIADOS E EVENTOS) | CENTRO (CALENDÁRIO) | DIREITA (FINANÇAS) ---
+col_esq, col_centro, col_dir = st.columns([1.15, 2.3, 1.15], gap="medium")
 
-st.markdown(html_calendario, unsafe_allow_html=True)
-
-# --- ALERTA DE CONTAS PRÓXIMAS DO VENCIMENTO ---
-if alertas_vencimento:
-    for dia_v, tit_v, val_v, dias_rest in alertas_vencimento:
-        prazo_txt = "VENCE HOJE!" if dias_rest == 0 else f"Vence em {dias_rest} dia(s) (Dia {dia_v:02d})"
-        st.warning(f"⚠️ **Alerta de Vencimento:** {tit_v} — **{formatar_brl(val_v)}** ({prazo_txt})")
-
-# --- PAINEL DE RESUMO FINANCEIRO DO MÊS ---
-saldo_previsto = total_receitas - total_despesas
-cor_saldo = cor_receita if saldo_previsto >= 0 else cor_despesa
-
-html_financeiro = (
-    f'<div style="margin-top: 18px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; font-family: sans-serif;">'
-    f'<div style="padding: 14px; border-radius: 12px; background-color: rgba(16, 185, 129, 0.12); border: 1px solid {cor_receita}; text-align: center;">'
-    f'<div style="font-size: 11px; text-transform: uppercase; font-weight: bold; opacity: 0.8;">Receitas (+)</div>'
-    f'<div style="font-size: 18px; font-weight: 800; color: {cor_receita}; margin-top: 4px;">{formatar_brl(total_receitas)}</div>'
-    f'</div>'
-    f'<div style="padding: 14px; border-radius: 12px; background-color: rgba(239, 68, 68, 0.12); border: 1px solid {cor_despesa}; text-align: center;">'
-    f'<div style="font-size: 11px; text-transform: uppercase; font-weight: bold; opacity: 0.8;">Despesas (-)</div>'
-    f'<div style="font-size: 18px; font-weight: 800; color: {cor_despesa}; margin-top: 4px;">{formatar_brl(total_despesas)}</div>'
-    f'</div>'
-    f'<div style="padding: 14px; border-radius: 12px; background-color: rgba(128, 128, 128, 0.1); border: 1px solid {cor_saldo}; text-align: center;">'
-    f'<div style="font-size: 11px; text-transform: uppercase; font-weight: bold; opacity: 0.8;">Saldo Previsto</div>'
-    f'<div style="font-size: 18px; font-weight: 800; color: {cor_saldo}; margin-top: 4px;">{formatar_brl(saldo_previsto)}</div>'
-    f'</div>'
-    f'</div>'
-)
-
-st.markdown(html_financeiro, unsafe_allow_html=True)
-
-# --- LEGENDA E LANÇAMENTOS DO MÊS ABAIXO DO CALENDÁRIO ---
-itens_legenda = (
-    f'<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">'
-    f'<span style="width: 12px; height: 12px; background-color: {cor_destaque_hoje}; border-radius: 50%; display: inline-block;"></span>'
-    f'<span><strong>Dia atual</strong> ({agora.strftime("%d/%m/%Y")})</span>'
-    f'</div>'
-)
-
-for dia_f, nome_f in feriados_do_mes:
-    itens_legenda += (
-        f'<div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">'
-        f'<span style="width: 12px; height: 12px; background-color: {cor_feriado}; border-radius: 50%; display: inline-block;"></span>'
-        f'<span><strong>Dia {dia_f:02d} (Feriado):</strong> {nome_f}</span>'
+# ==================== COLUNA ESQUERDA ====================
+with col_esq:
+    # Card 1: Feriados do Mês
+    itens_feriados = (
+        f'<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(128,128,128,0.15);">'
+        f'<span style="width: 10px; height: 10px; background-color: {cor_destaque_hoje}; border-radius: 50%; display: inline-block; flex-shrink: 0;"></span>'
+        f'<span style="font-size: 13px;"><strong>Hoje:</strong> {agora.strftime("%d/%m/%Y")}</span>'
         f'</div>'
     )
 
-for dia_n, dados_n in notas_do_mes:
-    tipo_reg = dados_n.get("tipo", "Lembrete")
-    valor_reg = float(dados_n.get("valor", 0.0))
-
-    if tipo_reg == "Receita":
-        cor_item = cor_receita
-        tag_valor = f" <span style='color:{cor_receita}; font-weight:bold;'>(+ {formatar_brl(valor_reg)})</span>"
-    elif tipo_reg == "Despesa":
-        cor_item = cor_despesa
-        tag_valor = f" <span style='color:{cor_despesa}; font-weight:bold;'>(- {formatar_brl(valor_reg)})</span>"
+    if feriados_do_mes:
+        for dia_f, nome_f in feriados_do_mes:
+            itens_feriados += (
+                f'<div style="display: flex; align-items: flex-start; gap: 8px; margin-top: 8px;">'
+                f'<span style="width: 10px; height: 10px; margin-top: 4px; background-color: {cor_feriado}; border-radius: 50%; display: inline-block; flex-shrink: 0;"></span>'
+                f'<span style="font-size: 13px; line-height: 1.3;"><strong>Dia {dia_f:02d}:</strong> {nome_f}</span>'
+                f'</div>'
+            )
     else:
-        cor_item = cor_nota
-        tag_valor = ""
+        itens_feriados += '<div style="font-size: 12px; opacity: 0.65;">Nenhum feriado nacional neste mês.</div>'
 
-    desc_texto = f" — {dados_n['descricao']}" if dados_n["descricao"] else ""
-    itens_legenda += (
-        f'<div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">'
-        f'<span style="width: 12px; height: 12px; background-color: {cor_item}; border-radius: 50%; display: inline-block;"></span>'
-        f'<span><strong>Dia {dia_n:02d} ({dados_n["titulo"]}):</strong>{tag_valor}{desc_texto}</span>'
-        f'</div>'
+    st.markdown(
+        f'<div style="padding: 15px; border-radius: 12px; background-color: rgba(128, 128, 128, 0.08); '
+        f'border: 1px solid rgba(128, 128, 128, 0.2); font-family: sans-serif; margin-bottom: 16px;">'
+        f'<div style="font-weight: bold; margin-bottom: 10px; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; opacity: 0.85;">🎉 Feriados do Mês</div>'
+        f'{itens_feriados}'
+        f'</div>',
+        unsafe_allow_html=True
     )
 
-if not feriados_do_mes and not notas_do_mes:
-    itens_legenda += (
-        f'<div style="margin-top: 6px; opacity: 0.7; font-size: 13px;">'
-        f'Clique em qualquer dia acima para registrar uma conta, receita ou lembrete.'
-        f'</div>'
+    # Card 2: Marcações / Eventos
+    itens_eventos = ""
+    if eventos_do_mes:
+        for dia_e, dados_e in eventos_do_mes:
+            desc_e = f"<div style='font-size: 12px; opacity: 0.8; margin-top: 2px;'>{dados_e['descricao']}</div>" if dados_e["descricao"] else ""
+            itens_eventos += (
+                f'<div style="display: flex; align-items: flex-start; gap: 8px; margin-top: 10px; padding-bottom: 8px; border-bottom: 1px solid rgba(128,128,128,0.12);">'
+                f'<span style="width: 10px; height: 10px; margin-top: 4px; background-color: {cor_nota}; border-radius: 50%; display: inline-block; flex-shrink: 0;"></span>'
+                f'<div style="font-size: 13px; line-height: 1.3;">'
+                f'<strong>Dia {dia_e:02d} — {dados_e["titulo"]}</strong>'
+                f'{desc_e}'
+                f'</div>'
+                f'</div>'
+            )
+    else:
+        itens_eventos = '<div style="font-size: 12px; opacity: 0.65;">Nenhum evento ou lembrete marcado.</div>'
+
+    st.markdown(
+        f'<div style="padding: 15px; border-radius: 12px; background-color: rgba(128, 128, 128, 0.08); '
+        f'border: 1px solid rgba(128, 128, 128, 0.2); font-family: sans-serif;">'
+        f'<div style="font-weight: bold; margin-bottom: 8px; text-transform: uppercase; font-size: 11px; letter-spacing: 1px; opacity: 0.85;">📌 Marcações / Eventos</div>'
+        f'{itens_eventos}'
+        f'</div>',
+        unsafe_allow_html=True
     )
 
-html_legenda = (
-    f'<div style="margin-top: 16px; padding: 15px 20px; border-radius: 12px; '
-    f'background-color: rgba(128, 128, 128, 0.08); border: 1px solid rgba(128, 128, 128, 0.2); '
-    f'font-family: sans-serif; font-size: 14px;">'
-    f'<div style="font-weight: bold; margin-bottom: 8px; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; opacity: 0.8;">Feriados e Movimentações do Mês</div>'
-    f'{itens_legenda}'
-    f'</div>'
-)
+# ==================== COLUNA CENTRAL ====================
+with col_centro:
+    @st.fragment(run_every=1)
+    def mostrar_relogio():
+        tempo_atual = datetime.now()
+        data_str = tempo_atual.strftime("%d/%m/%Y")
+        hora_str = tempo_atual.strftime("%H:%M:%S")
+        html_relogio = (
+            f'<div style="background-color: {cor_fundo_relogio}; color: {cor_texto_relogio}; '
+            f'padding: 12px 20px; border-radius: 12px; display: flex; justify-content: space-between; '
+            f'align-items: center; margin-bottom: 16px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); font-family: sans-serif;">'
+            f'<span style="font-size: 15px; opacity: 0.9;">📅 {data_str}</span>'
+            f'<span style="font-size: 22px; font-weight: bold; font-family: monospace;">⏰ {hora_str}</span>'
+            f'</div>'
+        )
+        st.markdown(html_relogio, unsafe_allow_html=True)
 
-st.markdown(html_legenda, unsafe_allow_html=True)
+    mostrar_relogio()
+
+    html_calendario = (
+        f'<div style="border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.12); '
+        f'font-family: sans-serif; border: 1px solid rgba(0,0,0,0.08);">'
+        f'<div style="background-color: {cor_cabecalho}; color: #FFFFFF; padding: 16px; text-align: center;">'
+        f'<h2 style="margin: 0; font-size: 24px; letter-spacing: 2px; text-transform: uppercase;">{meses_nomes[mes_escolhido]} 2026</h2>'
+        f'</div>'
+        f'<div style="display: grid; grid-template-columns: repeat(7, 1fr); background-color: {cor_cabecalho}; '
+        f'filter: brightness
