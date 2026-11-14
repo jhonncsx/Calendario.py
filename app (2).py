@@ -290,7 +290,7 @@ for semana in semanas:
 
 html_calendario = (
     f'<div style="border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.12); '
-    f'font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; border: 1px solid rgba(0,0,0,0.08);">'
+    f'font-family: sans-serif; border: 1px solid rgba(0,0,0,0.08);">'
     f'<div style="background-color: {cor_cabecalho}; color: #FFFFFF; padding: 20px; text-align: center;">'
     f'<h2 style="margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;">{meses_nomes[mes_escolhido]} 2026</h2>'
     f'</div>'
