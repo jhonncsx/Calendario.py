@@ -1,60 +1,33 @@
 import calendar
+import json
+import os
 from datetime import datetime
-import psycopg2
 import streamlit as st
 
 st.set_page_config(page_title="Calendário 2026", layout="centered")
 
-# --- CONEXÃO E OPERAÇÕES COM O BANCO DE DADOS NEON (POSTGRESQL) ---
-def get_connection():
-    return psycopg2.connect(st.secrets["DATABASE_URL"])
-
-def inicializar_banco():
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS anotacoes_2026 (
-                    chave_data VARCHAR(10) PRIMARY KEY,
-                    titulo VARCHAR(100) NOT NULL,
-                    descricao TEXT
-                );
-            """)
-        conn.commit()
+# --- GERENCIAMENTO DE ANOTAÇÕES (ARQUIVO JSON LOCAL) ---
+ARQUIVO_ANOTACOES = "anotacoes_2026.json"
 
 def carregar_anotacoes():
-    inicializar_banco()
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT chave_data, titulo, descricao FROM anotacoes_2026;")
-            linhas = cur.fetchall()
-            return {
-                row[0]: {"titulo": row[1], "descricao": row[2] or ""}
-                for row in linhas
-            }
+    if os.path.exists(ARQUIVO_ANOTACOES):
+        with open(ARQUIVO_ANOTACOES, "r", encoding="utf-8") as f:
+            dados = json.load(f)
+            convertido = {}
+            for k, v in dados.items():
+                if isinstance(v, str):
+                    convertido[k] = {"titulo": v[:15], "descricao": v}
+                else:
+                    convertido[k] = v
+            return convertido
+    return {}
 
-def salvar_anotacao_db(chave_data, titulo, descricao):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO anotacoes_2026 (chave_data, titulo, descricao)
-                VALUES (%s, %s, %s)
-                ON CONFLICT (chave_data)
-                DO UPDATE SET titulo = EXCLUDED.titulo, descricao = EXCLUDED.descricao;
-            """, (chave_data, titulo, descricao))
-        conn.commit()
-
-def excluir_anotacao_db(chave_data):
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM anotacoes_2026 WHERE chave_data = %s;", (chave_data,))
-        conn.commit()
+def salvar_anotacoes(dados):
+    with open(ARQUIVO_ANOTACOES, "w", encoding="utf-8") as f:
+        json.dump(dados, f, ensure_ascii=False, indent=4)
 
 if "anotacoes" not in st.session_state:
-    try:
-        st.session_state.anotacoes = carregar_anotacoes()
-    except Exception as e:
-        st.error(f"Erro ao conectar ao banco Neon: {e}")
-        st.stop()
+    st.session_state.anotacoes = carregar_anotacoes()
 
 # --- DICIONÁRIO DE FERIADOS NACIONAIS 2026 ---
 FERIADOS_2026 = {
@@ -112,19 +85,19 @@ def abrir_modal_anotacao(mes, dia):
             if titulo.strip() or descricao.strip():
                 titulo_final = titulo.strip() if titulo.strip() else "Lembrete"
                 desc_final = descricao.strip()
-                salvar_anotacao_db(chave_data, titulo_final, desc_final)
                 st.session_state.anotacoes[chave_data] = {
                     "titulo": titulo_final,
                     "descricao": desc_final
                 }
+                salvar_anotacoes(st.session_state.anotacoes)
             st.query_params.clear()
             st.rerun()
 
     with col2:
         if st.button("🗑️ Excluir", use_container_width=True):
             if chave_data in st.session_state.anotacoes:
-                excluir_anotacao_db(chave_data)
                 del st.session_state.anotacoes[chave_data]
+                salvar_anotacoes(st.session_state.anotacoes)
             st.query_params.clear()
             st.rerun()
 
@@ -143,7 +116,6 @@ mes_escolhido = st.sidebar.selectbox(
 )
 
 st.sidebar.caption("💡 Dica: Clique diretamente sobre qualquer dia no calendário para adicionar ou editar um lembrete.")
-st.sidebar.success("☁️ Conectado ao Neon PostgreSQL")
 
 st.sidebar.markdown("---")
 with st.sidebar.expander("🎨 Personalizar Cores", expanded=True):
@@ -290,61 +262,4 @@ for semana in semanas:
 
 html_calendario = (
     f'<div style="border-radius: 16px; overflow: hidden; box-shadow: 0 10px 25px rgba(0,0,0,0.12); '
-    f'font-family: sans-serif; border: 1px solid rgba(0,0,0,0.08);">'
-    f'<div style="background-color: {cor_cabecalho}; color: #FFFFFF; padding: 20px; text-align: center;">'
-    f'<h2 style="margin: 0; font-size: 28px; letter-spacing: 2px; text-transform: uppercase;">{meses_nomes[mes_escolhido]} 2026</h2>'
-    f'</div>'
-    f'<div style="display: grid; grid-template-columns: repeat(7, 1fr); background-color: {cor_cabecalho}; '
-    f'filter: brightness(0.9); color: #FFFFFF; text-align: center; font-weight: bold; font-size: 13px; padding: 10px 0;">'
-    f'{cabecalho_dias_html}'
-    f'</div>'
-    f'<div style="display: grid; grid-template-columns: repeat(7, 1fr); background-color: {cor_fundo_dias}; gap: 1px;">'
-    f'{celulas_html}'
-    f'</div>'
-    f'</div>'
-)
-
-st.markdown(html_calendario, unsafe_allow_html=True)
-
-# --- LEGENDA ABAIXO DO CALENDÁRIO ---
-itens_legenda = (
-    f'<div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">'
-    f'<span style="width: 12px; height: 12px; background-color: {cor_destaque_hoje}; border-radius: 50%; display: inline-block;"></span>'
-    f'<span><strong>Dia atual</strong> ({agora.strftime("%d/%m/%Y")})</span>'
-    f'</div>'
-)
-
-for dia_f, nome_f in feriados_do_mes:
-    itens_legenda += (
-        f'<div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">'
-        f'<span style="width: 12px; height: 12px; background-color: {cor_feriado}; border-radius: 50%; display: inline-block;"></span>'
-        f'<span><strong>Dia {dia_f:02d} (Feriado):</strong> {nome_f}</span>'
-        f'</div>'
-    )
-
-for dia_n, dados_n in notas_do_mes:
-    desc_texto = f" — {dados_n['descricao']}" if dados_n["descricao"] else ""
-    itens_legenda += (
-        f'<div style="display: flex; align-items: center; gap: 8px; margin-top: 6px;">'
-        f'<span style="width: 12px; height: 12px; background-color: {cor_nota}; border-radius: 50%; display: inline-block;"></span>'
-        f'<span><strong>Dia {dia_n:02d} ({dados_n["titulo"]}):</strong>{desc_texto if desc_texto else " Sem descrição adicional."}</span>'
-        f'</div>'
-    )
-
-if not feriados_do_mes and not notas_do_mes:
-    itens_legenda += (
-        f'<div style="margin-top: 6px; opacity: 0.7; font-size: 13px;">'
-        f'Clique em qualquer dia acima para adicionar um lembrete.'
-        f'</div>'
-    )
-
-html_legenda = (
-    f'<div style="margin-top: 18px; padding: 15px 20px; border-radius: 12px; '
-    f'background-color: rgba(128, 128, 128, 0.08); border: 1px solid rgba(128, 128, 128, 0.2); '
-    f'font-family: sans-serif; font-size: 14px;">'
-    f'<div style="font-weight: bold; margin-bottom: 8px; text-transform: uppercase; font-size: 12px; letter-spacing: 1px; opacity: 0.8;">Feriados e Anotações do Mês</div>'
-    f'{itens_legenda}'
-    f'</div>'
-)
-
-st.markdown(html_legenda, unsafe_allow_html=True)
+    f'font-family:
